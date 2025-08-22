@@ -198,7 +198,7 @@ export default function IframeTester() {
         
         // Reset all sandbox values
         Object.keys(newSandbox).forEach(key => {
-          (newSandbox as any)[key] = false;
+          (newSandbox as Record<string, boolean>)[key] = false;
         });
 
         // Set found values
@@ -259,7 +259,7 @@ export default function IframeTester() {
         return;
       }
 
-      let jsxContent = returnMatch[1].trim();
+      const jsxContent = returnMatch[1].trim();
 
       // Extract iframe from JSX content
       const iframeRegex = /<iframe[^>]*>/i;
@@ -329,11 +329,6 @@ export default function IframeTester() {
     return substitutedCode;
   };
 
-  const copyIframeCode = () => {
-    const iframeCode = generateIframeCode();
-    navigator.clipboard.writeText(iframeCode);
-    alert('Iframe code copied to clipboard!');
-  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
@@ -709,8 +704,7 @@ export default OnOffRamp`}
                           src={substituteVariables(url)}
                           width={width}
                           height={height}
-                          frameBorder={iframeProps.frameborder}
-                          scrolling={iframeProps.scrolling}
+                          style={{ border: iframeProps.frameborder === '1' ? '1px solid' : 'none', overflow: iframeProps.scrolling === 'no' ? 'hidden' : 'auto' }}
                           allowFullScreen={iframeProps.allowfullscreen}
                           loading={iframeProps.loading as "eager" | "lazy"}
                           referrerPolicy={iframeProps.referrerpolicy as React.HTMLAttributeReferrerPolicy}
@@ -838,8 +832,8 @@ export default OnOffRamp`}
                 <textarea
                   value={
                     previewMode === 'react' && parsedReactComponent
-                      ? reactComponentCode.replace(/process\.env\.([A-Z_][A-Z0-9_]*)/g, (match, envVar) => {
-                          return envVariables[envVar] || match;
+                      ? reactComponentCode.replace(/process\.env\.([A-Z_][A-Z0-9_]*)/g, (_, envVar) => {
+                          return envVariables[envVar] || `process.env.${envVar}`;
                         })
                       : previewMode === 'component' && parsedComponent
                       ? substituteVariables(parsedComponent)
@@ -860,7 +854,7 @@ export default OnOffRamp`}
                   <button
                     onClick={() => {
                       const code = previewMode === 'react' && parsedReactComponent
-                        ? reactComponentCode.replace(/process\.env\.([A-Z_][A-Z0-9_]*)/g, (match, envVar) => {
+                        ? reactComponentCode.replace(/process\.env\.([A-Z_][A-Z0-9_]*)/g, (_, envVar) => {
                             return `"${envVariables[envVar] || 'YOUR_' + envVar + '_HERE'}"`;
                           })
                         : previewMode === 'component' && parsedComponent
