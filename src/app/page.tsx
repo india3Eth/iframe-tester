@@ -10,13 +10,17 @@ export default function IframeTester() {
   const [error, setError] = useState('');
   
   const [htmlJsxCode, setHtmlJsxCode] = useState('');
-  const [previewMode, setPreviewMode] = useState<'simple' | 'component'>('simple');
+  const [reactComponentCode, setReactComponentCode] = useState('');
+  const [previewMode, setPreviewMode] = useState<'simple' | 'component' | 'react'>('simple');
   const [parsedComponent, setParsedComponent] = useState<string>('');
+  const [parsedReactComponent, setParsedReactComponent] = useState<string>('');
   const [variables, setVariables] = useState<Record<string, string>>({});
+  const [envVariables, setEnvVariables] = useState<Record<string, string>>({});
   
   const [iframeProps, setIframeProps] = useState({
     frameborder: '0',
     scrolling: 'auto',
+    
     allowfullscreen: false,
     sandbox: {
       allowScripts: false,
@@ -227,11 +231,100 @@ export default function IframeTester() {
     }
   };
 
+  const parseReactComponent = () => {
+    if (!reactComponentCode.trim()) {
+      setError('Please enter a React component to parse');
+      return;
+    }
+
+    try {
+      setError('');
+      
+      // Extract environment variables
+      const envVarRegex = /process\.env\.([A-Z_][A-Z0-9_]*)/g;
+      const foundEnvVars: Record<string, string> = {};
+      let match;
+      
+      while ((match = envVarRegex.exec(reactComponentCode)) !== null) {
+        const envVarName = match[1];
+        foundEnvVars[envVarName] = '';
+      }
+
+      // Extract the JSX return content
+      const returnRegex = /return\s*\(\s*([\s\S]*?)\s*\)\s*[;}]/;
+      const returnMatch = reactComponentCode.match(returnRegex);
+      
+      if (!returnMatch) {
+        setError('Could not find JSX return statement in React component');
+        return;
+      }
+
+      let jsxContent = returnMatch[1].trim();
+
+      // Extract iframe from JSX content
+      const iframeRegex = /<iframe[^>]*>/i;
+      const iframeMatch = jsxContent.match(iframeRegex);
+      
+      if (!iframeMatch) {
+        setError('No iframe element found in the React component');
+        return;
+      }
+
+      const iframeTag = iframeMatch[0];
+      
+      // Extract attributes from iframe
+      const extractAttribute = (attr: string) => {
+        const regex = new RegExp(`${attr}=["'\`]([^"'\`]*?)["'\`]|${attr}=\\{[^}]*\\}`, 'i');
+        const attrMatch = iframeTag.match(regex);
+        return attrMatch ? attrMatch[1] || attrMatch[0].replace(`${attr}=`, '').replace(/[{}'"]/g, '') : '';
+      };
+
+      // Extract src and handle template literals with env vars
+      const srcMatch = iframeTag.match(/src=\{`([^`]*)`\}|src=["']([^"']*?)["']/i);
+      let extractedSrc = '';
+
+      if (srcMatch) {
+        extractedSrc = srcMatch[1] || srcMatch[2] || '';
+      }
+
+      // Extract dimensions
+      const extractedWidth = extractAttribute('width') || '800';
+      const extractedHeight = extractAttribute('height') || '600';
+
+      // Update state with extracted values
+      setUrl(extractedSrc);
+      setWidth(parseInt(extractedWidth) || 800);
+      setHeight(parseInt(extractedHeight) || 600);
+      setEnvVariables(foundEnvVars);
+
+      // Store the JSX content for component preview
+      setParsedReactComponent(jsxContent);
+      
+      // Switch to React preview mode
+      setPreviewMode('react');
+
+      alert('React component parsed successfully! Check the form fields and preview.');
+      
+    } catch (err) {
+      setError('Error parsing React component. Please check the syntax.');
+      console.error('React parse error:', err);
+    }
+  };
+
   const substituteVariables = (code: string) => {
     let substitutedCode = code;
     Object.entries(variables).forEach(([key, value]) => {
       const regex = new RegExp(`\\$\\{${key}\\}`, 'g');
       substitutedCode = substitutedCode.replace(regex, value || `\${${key}}`);
+    });
+    return substitutedCode;
+  };
+
+  const substituteEnvVariables = (code: string) => {
+    let substitutedCode = code;
+    Object.entries(envVariables).forEach(([key, value]) => {
+      const regex = new RegExp(`process\\.env\\.${key}|\\$\\{meldApiKey\\}`, 'g');
+      substitutedCode = substitutedCode.replace(regex, value || `process.env.${key}`);
     });
     return substitutedCode;
   };
@@ -366,6 +459,76 @@ Or just the iframe:
                               type="text"
                               value={value}
                               onChange={(e) => setVariables(prev => ({ ...prev, [key]: e.target.value }))}
+                              placeholder={`Enter value for ${key}`}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">
+                  Parse React Component
+                </h2>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      React Component Code
+                    </label>
+                    <textarea
+                      value={reactComponentCode}
+                      onChange={(e) => setReactComponentCode(e.target.value)}
+                      placeholder={`Paste your React component here:
+
+const OnOffRamp = () => {
+  const meldApiKey = process.env.NEXT_PUBLIC_MELD_API_KEY
+
+  return (
+    <div className="wrapper-styling">
+      <iframe
+        src={\`https://example.com?key=\${meldApiKey}\`}
+        height="790"
+        width="450"
+        title="Widget"
+      />
+    </div>
+  )
+}
+
+export default OnOffRamp`}
+                      rows={12}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white font-mono text-sm resize-vertical"
+                    />
+                  </div>
+
+                  <button
+                    onClick={parseReactComponent}
+                    disabled={!reactComponentCode.trim()}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-medium py-2 px-4 rounded-md transition-colors"
+                  >
+                    Parse React Component
+                  </button>
+
+                  {Object.keys(envVariables).length > 0 && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Environment Variables Found
+                      </label>
+                      <div className="space-y-2">
+                        {Object.entries(envVariables).map(([key, value]) => (
+                          <div key={key}>
+                            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+                              process.env.{key}
+                            </label>
+                            <input
+                              type="text"
+                              value={value}
+                              onChange={(e) => setEnvVariables(prev => ({ ...prev, [key]: e.target.value }))}
                               placeholder={`Enter value for ${key}`}
                               className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
                             />
@@ -522,11 +685,12 @@ Or just the iframe:
                     <label className="text-sm text-gray-600 dark:text-gray-400">Mode:</label>
                     <select
                       value={previewMode}
-                      onChange={(e) => setPreviewMode(e.target.value as 'simple' | 'component')}
+                      onChange={(e) => setPreviewMode(e.target.value as 'simple' | 'component' | 'react')}
                       className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                     >
                       <option value="simple">Simple Iframe</option>
                       <option value="component">Complete Component</option>
+                      <option value="react">React Component</option>
                     </select>
                   </div>
                   
@@ -583,7 +747,7 @@ Or just the iframe:
                           }}
                         />
                       </div>
-                    ) : (
+                    ) : previewMode === 'component' ? (
                       <div className="w-full">
                         {parsedComponent ? (
                           <div 
@@ -601,6 +765,24 @@ Or just the iframe:
                           </div>
                         )}
                       </div>
+                    ) : (
+                      <div className="w-full">
+                        {parsedReactComponent ? (
+                          <div 
+                            className="w-full flex justify-center"
+                            dangerouslySetInnerHTML={{ 
+                              __html: substituteEnvVariables(parsedReactComponent)
+                                .replace(/className=/g, 'class=')
+                                .replace(/\{`([^`]*)`\}/g, (_, content) => `"${substituteEnvVariables(content)}"`)
+                            }} 
+                          />
+                        ) : (
+                          <div className="text-center text-gray-500 dark:text-gray-400 py-8">
+                            <div className="text-2xl mb-2">⚛️</div>
+                            <p>Parse React component to see preview with styling</p>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 ) : (
@@ -609,7 +791,9 @@ Or just the iframe:
                     <p>
                       {previewMode === 'simple' 
                         ? 'Enter a valid URL to preview the iframe' 
-                        : 'Enter a valid URL or parse HTML/JSX code to preview the component'
+                        : previewMode === 'component'
+                        ? 'Enter a valid URL or parse HTML/JSX code to preview the component'
+                        : 'Enter a valid URL or parse React component to preview with styling'
                       }
                     </p>
                   </div>
@@ -627,9 +811,14 @@ Or just the iframe:
               <div className="flex items-center gap-2">
                 <label className="text-sm text-gray-600 dark:text-gray-400">Output:</label>
                 <select
-                  value={previewMode === 'component' && parsedComponent ? 'component' : 'iframe'}
+                  value={
+                    previewMode === 'react' && parsedReactComponent ? 'react' :
+                    previewMode === 'component' && parsedComponent ? 'component' : 'iframe'
+                  }
                   onChange={(e) => {
-                    if (e.target.value === 'component' && parsedComponent) {
+                    if (e.target.value === 'react' && parsedReactComponent) {
+                      setPreviewMode('react');
+                    } else if (e.target.value === 'component' && parsedComponent) {
                       setPreviewMode('component');
                     } else {
                       setPreviewMode('simple');
@@ -638,7 +827,8 @@ Or just the iframe:
                   className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                 >
                   <option value="iframe">Iframe Only</option>
-                  <option value="component" disabled={!parsedComponent}>Complete Component</option>
+                  <option value="component" disabled={!parsedComponent}>HTML Component</option>
+                  <option value="react" disabled={!parsedReactComponent}>React Component</option>
                 </select>
               </div>
             </div>
@@ -647,12 +837,19 @@ Or just the iframe:
               <div>
                 <textarea
                   value={
-                    previewMode === 'component' && parsedComponent
+                    previewMode === 'react' && parsedReactComponent
+                      ? reactComponentCode.replace(/process\.env\.([A-Z_][A-Z0-9_]*)/g, (match, envVar) => {
+                          return envVariables[envVar] || match;
+                        })
+                      : previewMode === 'component' && parsedComponent
                       ? substituteVariables(parsedComponent)
                       : generateIframeCode()
                   }
                   readOnly
-                  rows={previewMode === 'component' && parsedComponent ? 12 : 6}
+                  rows={
+                    previewMode === 'react' && parsedReactComponent ? 15 :
+                    previewMode === 'component' && parsedComponent ? 12 : 6
+                  }
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white font-mono text-sm"
                   placeholder="Enter a URL to generate iframe code..."
                 />
@@ -662,7 +859,11 @@ Or just the iframe:
                 <div className="flex gap-2">
                   <button
                     onClick={() => {
-                      const code = previewMode === 'component' && parsedComponent
+                      const code = previewMode === 'react' && parsedReactComponent
+                        ? reactComponentCode.replace(/process\.env\.([A-Z_][A-Z0-9_]*)/g, (match, envVar) => {
+                            return `"${envVariables[envVar] || 'YOUR_' + envVar + '_HERE'}"`;
+                          })
+                        : previewMode === 'component' && parsedComponent
                         ? substituteVariables(parsedComponent)
                         : generateIframeCode();
                       navigator.clipboard.writeText(code);
@@ -673,7 +874,7 @@ Or just the iframe:
                     Copy Code to Clipboard
                   </button>
                   
-                  {previewMode === 'component' && parsedComponent && (
+                  {(previewMode === 'component' && parsedComponent) || (previewMode === 'react' && parsedReactComponent) ? (
                     <button
                       onClick={() => {
                         navigator.clipboard.writeText(generateIframeCode());
@@ -683,19 +884,27 @@ Or just the iframe:
                     >
                       Copy Iframe Only
                     </button>
-                  )}
+                  ) : null}
                 </div>
               )}
               
-              {Object.keys(variables).length > 0 && (
+              {(Object.keys(variables).length > 0 || Object.keys(envVariables).length > 0) && (
                 <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
                   <h4 className="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-2">
                     Variables in Code:
                   </h4>
-                  <div className="text-sm text-yellow-700 dark:text-yellow-300">
+                  <div className="text-sm text-yellow-700 dark:text-yellow-300 space-y-1">
                     {Object.entries(variables).map(([key, value]) => (
                       <div key={key} className="flex justify-between items-center">
                         <span className="font-mono">${`{${key}}`}</span>
+                        <span className="font-mono text-xs bg-yellow-100 dark:bg-yellow-800 px-2 py-1 rounded">
+                          {value || 'empty'}
+                        </span>
+                      </div>
+                    ))}
+                    {Object.entries(envVariables).map(([key, value]) => (
+                      <div key={key} className="flex justify-between items-center">
+                        <span className="font-mono">process.env.{key}</span>
                         <span className="font-mono text-xs bg-yellow-100 dark:bg-yellow-800 px-2 py-1 rounded">
                           {value || 'empty'}
                         </span>

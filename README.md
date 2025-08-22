@@ -172,3 +172,4 @@ If you encounter any issues or have questions:
 ---
 
 Made with ❤️ using Next.js and Tailwind CSS
+
