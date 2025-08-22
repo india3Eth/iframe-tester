@@ -35,7 +35,7 @@ export default function IframeTester() {
     try {
       new URL(string);
       return true;
-    } catch (_) {
+    } catch {
       return false;
     }
   };
@@ -58,7 +58,7 @@ export default function IframeTester() {
   const generateIframeCode = () => {
     if (!url) return '';
     
-    let attributes = [`src="${url}"`, `width="${width}"`, `height="${height}"`];
+    const attributes = [`src="${url}"`, `width="${width}"`, `height="${height}"`];
     
     if (iframeProps.frameborder !== '0') {
       attributes.push(`frameborder="${iframeProps.frameborder}"`);
@@ -337,14 +337,14 @@ export default function IframeTester() {
                       frameBorder={iframeProps.frameborder}
                       scrolling={iframeProps.scrolling}
                       allowFullScreen={iframeProps.allowfullscreen}
-                      loading={iframeProps.loading}
-                      referrerPolicy={iframeProps.referrerpolicy}
+                      loading={iframeProps.loading as "eager" | "lazy"}
+                      referrerPolicy={iframeProps.referrerpolicy as React.HTMLAttributeReferrerPolicy}
                       sandbox={
                         Object.values(iframeProps.sandbox).some(Boolean)
                           ? Object.entries(iframeProps.sandbox)
                               .filter(([, value]) => value)
                               .map(([key]) => {
-                                const sandboxMap = {
+                                const sandboxMap: Record<string, string> = {
                                   allowScripts: 'allow-scripts',
                                   allowForms: 'allow-forms',
                                   allowPopups: 'allow-popups',
