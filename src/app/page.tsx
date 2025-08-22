@@ -9,6 +9,11 @@ export default function IframeTester() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   
+  const [htmlJsxCode, setHtmlJsxCode] = useState('');
+  const [previewMode, setPreviewMode] = useState<'simple' | 'component'>('simple');
+  const [parsedComponent, setParsedComponent] = useState<string>('');
+  const [variables, setVariables] = useState<Record<string, string>>({});
+  
   const [iframeProps, setIframeProps] = useState({
     frameborder: '0',
     scrolling: 'auto',
@@ -106,6 +111,131 @@ export default function IframeTester() {
     return `<iframe ${attributes.join(' ')}></iframe>`;
   };
 
+  const parseHtmlJsxCode = () => {
+    if (!htmlJsxCode.trim()) {
+      setError('Please enter HTML/JSX code to parse');
+      return;
+    }
+
+    try {
+      setError('');
+      
+      // Extract iframe element and its attributes
+      const iframeRegex = /<iframe[^>]*>/i;
+      const iframeMatch = htmlJsxCode.match(iframeRegex);
+      
+      if (!iframeMatch) {
+        setError('No iframe element found in the provided code');
+        return;
+      }
+
+      const iframeTag = iframeMatch[0];
+      
+      // Extract attributes
+      const extractAttribute = (attr: string) => {
+        const regex = new RegExp(`${attr}=["'\`]([^"'\`]*?)["'\`]|${attr}=\\{[^}]*\\}`, 'i');
+        const match = iframeTag.match(regex);
+        return match ? match[1] || match[0].replace(`${attr}=`, '').replace(/[{}'"]/g, '') : '';
+      };
+
+      // Extract src and handle JSX template literals
+      const srcMatch = iframeTag.match(/src=\{`([^`]*)`\}|src=["']([^"']*?)["']/i);
+      let extractedSrc = '';
+      const foundVariables: Record<string, string> = {};
+
+      if (srcMatch) {
+        extractedSrc = srcMatch[1] || srcMatch[2] || '';
+        
+        // Find variables in template literals ${variableName}
+        const variableMatches = extractedSrc.match(/\$\{([^}]+)\}/g);
+        if (variableMatches) {
+          variableMatches.forEach(variable => {
+            const varName = variable.replace(/\$\{|\}/g, '');
+            foundVariables[varName] = '';
+          });
+        }
+      }
+
+      // Extract dimensions
+      const extractedWidth = extractAttribute('width') || '800';
+      const extractedHeight = extractAttribute('height') || '600';
+
+      // Update state with extracted values
+      setUrl(extractedSrc);
+      setWidth(parseInt(extractedWidth) || 800);
+      setHeight(parseInt(extractedHeight) || 600);
+      setVariables(foundVariables);
+
+      // Extract iframe properties
+      const newIframeProps = { ...iframeProps };
+      
+      // Check for frameborder
+      const frameborder = extractAttribute('frameborder');
+      if (frameborder) newIframeProps.frameborder = frameborder;
+
+      // Check for scrolling
+      const scrolling = extractAttribute('scrolling');
+      if (scrolling) newIframeProps.scrolling = scrolling;
+
+      // Check for loading
+      const loading = extractAttribute('loading');
+      if (loading) newIframeProps.loading = loading;
+
+      // Check for allowfullscreen
+      if (iframeTag.includes('allowfullscreen')) {
+        newIframeProps.allowfullscreen = true;
+      }
+
+      // Extract sandbox attributes
+      const sandboxMatch = iframeTag.match(/sandbox=["']([^"']*?)["']/i);
+      if (sandboxMatch) {
+        const sandboxValues = sandboxMatch[1].split(' ');
+        const newSandbox = { ...newIframeProps.sandbox };
+        
+        // Reset all sandbox values
+        Object.keys(newSandbox).forEach(key => {
+          (newSandbox as any)[key] = false;
+        });
+
+        // Set found values
+        sandboxValues.forEach(value => {
+          if (value === 'allow-scripts') newSandbox.allowScripts = true;
+          if (value === 'allow-forms') newSandbox.allowForms = true;
+          if (value === 'allow-popups') newSandbox.allowPopups = true;
+          if (value === 'allow-same-origin') newSandbox.allowSameOrigin = true;
+          if (value === 'allow-top-navigation') newSandbox.allowTopNavigation = true;
+        });
+
+        newIframeProps.sandbox = newSandbox;
+      }
+
+      setIframeProps(newIframeProps);
+
+      // Store the complete component HTML for component preview
+      setParsedComponent(htmlJsxCode);
+      
+      // Switch to component mode if wrapper div is detected
+      if (htmlJsxCode.includes('<div')) {
+        setPreviewMode('component');
+      }
+
+      alert('Code parsed successfully! Check the form fields and preview.');
+      
+    } catch (err) {
+      setError('Error parsing the provided code. Please check the format.');
+      console.error('Parse error:', err);
+    }
+  };
+
+  const substituteVariables = (code: string) => {
+    let substitutedCode = code;
+    Object.entries(variables).forEach(([key, value]) => {
+      const regex = new RegExp(`\\$\\{${key}\\}`, 'g');
+      substitutedCode = substitutedCode.replace(regex, value || `\${${key}}`);
+    });
+    return substitutedCode;
+  };
+
   const copyIframeCode = () => {
     const iframeCode = generateIframeCode();
     navigator.clipboard.writeText(iframeCode);
@@ -180,6 +310,70 @@ export default function IframeTester() {
                   >
                     {isLoading ? 'Loading...' : 'Load Widget'}
                   </button>
+                </div>
+              </div>
+
+              <div>
+                <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">
+                  Parse Existing Code
+                </h2>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      HTML/JSX Code
+                    </label>
+                    <textarea
+                      value={htmlJsxCode}
+                      onChange={(e) => setHtmlJsxCode(e.target.value)}
+                      placeholder={`Paste your HTML/JSX code here:
+
+<div className="wrapper-class">
+  <iframe
+    src="https://example.com"
+    width="450"
+    height="790"
+  />
+</div>
+
+Or just the iframe:
+<iframe src={\`https://example.com/?key=\${apiKey}\`} width="450" height="790" />`}
+                      rows={8}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white font-mono text-sm resize-vertical"
+                    />
+                  </div>
+
+                  <button
+                    onClick={parseHtmlJsxCode}
+                    disabled={!htmlJsxCode.trim()}
+                    className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-medium py-2 px-4 rounded-md transition-colors"
+                  >
+                    Parse & Load Code
+                  </button>
+
+                  {Object.keys(variables).length > 0 && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Variables Found
+                      </label>
+                      <div className="space-y-2">
+                        {Object.entries(variables).map(([key, value]) => (
+                          <div key={key}>
+                            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+                              ${`{${key}}`}
+                            </label>
+                            <input
+                              type="text"
+                              value={value}
+                              onChange={(e) => setVariables(prev => ({ ...prev, [key]: e.target.value }))}
+                              placeholder={`Enter value for ${key}`}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -318,64 +512,106 @@ export default function IframeTester() {
             </div>
 
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
-              <div className="flex justify-between items-center mb-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
                 <h2 className="text-xl font-semibold text-gray-800 dark:text-white">
                   Preview
                 </h2>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  Dimensions: {width} × {height}px
+                
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-gray-600 dark:text-gray-400">Mode:</label>
+                    <select
+                      value={previewMode}
+                      onChange={(e) => setPreviewMode(e.target.value as 'simple' | 'component')}
+                      className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                    >
+                      <option value="simple">Simple Iframe</option>
+                      <option value="component">Complete Component</option>
+                    </select>
+                  </div>
+                  
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    Dimensions: {width} × {height}px
+                  </div>
                 </div>
               </div>
               
               <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 min-h-[500px] flex items-center justify-center">
                 {url && isValidUrl(url) ? (
-                  <div className="w-full overflow-auto flex justify-center">
-                    <iframe
-                      src={url}
-                      width={width}
-                      height={height}
-                      frameBorder={iframeProps.frameborder}
-                      scrolling={iframeProps.scrolling}
-                      allowFullScreen={iframeProps.allowfullscreen}
-                      loading={iframeProps.loading as "eager" | "lazy"}
-                      referrerPolicy={iframeProps.referrerpolicy as React.HTMLAttributeReferrerPolicy}
-                      sandbox={
-                        Object.values(iframeProps.sandbox).some(Boolean)
-                          ? Object.entries(iframeProps.sandbox)
-                              .filter(([, value]) => value)
-                              .map(([key]) => {
-                                const sandboxMap: Record<string, string> = {
-                                  allowScripts: 'allow-scripts',
-                                  allowForms: 'allow-forms',
-                                  allowPopups: 'allow-popups',
-                                  allowSameOrigin: 'allow-same-origin',
-                                  allowTopNavigation: 'allow-top-navigation'
-                                };
-                                return sandboxMap[key] || key;
-                              })
-                              .join(' ')
-                          : undefined
-                      }
-                      allow={
-                        Object.values(iframeProps.allow).some(Boolean)
-                          ? Object.entries(iframeProps.allow)
-                              .filter(([, value]) => value)
-                              .map(([key]) => key)
-                              .join('; ')
-                          : undefined
-                      }
-                      className="border border-gray-300 dark:border-gray-600 rounded"
-                      onLoad={() => setIsLoading(false)}
-                      onError={() => {
-                        setIsLoading(false);
-                        setError('Failed to load the URL');
-                      }}
-                    />
+                  <div className="w-full overflow-auto">
+                    {previewMode === 'simple' ? (
+                      <div className="flex justify-center">
+                        <iframe
+                          src={substituteVariables(url)}
+                          width={width}
+                          height={height}
+                          frameBorder={iframeProps.frameborder}
+                          scrolling={iframeProps.scrolling}
+                          allowFullScreen={iframeProps.allowfullscreen}
+                          loading={iframeProps.loading as "eager" | "lazy"}
+                          referrerPolicy={iframeProps.referrerpolicy as React.HTMLAttributeReferrerPolicy}
+                          sandbox={
+                            Object.values(iframeProps.sandbox).some(Boolean)
+                              ? Object.entries(iframeProps.sandbox)
+                                  .filter(([, value]) => value)
+                                  .map(([key]) => {
+                                    const sandboxMap: Record<string, string> = {
+                                      allowScripts: 'allow-scripts',
+                                      allowForms: 'allow-forms',
+                                      allowPopups: 'allow-popups',
+                                      allowSameOrigin: 'allow-same-origin',
+                                      allowTopNavigation: 'allow-top-navigation'
+                                    };
+                                    return sandboxMap[key] || key;
+                                  })
+                                  .join(' ')
+                              : undefined
+                          }
+                          allow={
+                            Object.values(iframeProps.allow).some(Boolean)
+                              ? Object.entries(iframeProps.allow)
+                                  .filter(([, value]) => value)
+                                  .map(([key]) => key)
+                                  .join('; ')
+                              : undefined
+                          }
+                          className="border border-gray-300 dark:border-gray-600 rounded"
+                          onLoad={() => setIsLoading(false)}
+                          onError={() => {
+                            setIsLoading(false);
+                            setError('Failed to load the URL');
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-full">
+                        {parsedComponent ? (
+                          <div 
+                            className="w-full flex justify-center"
+                            dangerouslySetInnerHTML={{ 
+                              __html: substituteVariables(parsedComponent)
+                                .replace(/className=/g, 'class=')
+                                .replace(/\{`([^`]*)`\}/g, (_, content) => `"${substituteVariables(content)}"`)
+                            }} 
+                          />
+                        ) : (
+                          <div className="text-center text-gray-500 dark:text-gray-400 py-8">
+                            <div className="text-2xl mb-2">📋</div>
+                            <p>Parse HTML/JSX code to see complete component preview</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="text-center text-gray-500 dark:text-gray-400">
                     <div className="text-4xl mb-4">📱</div>
-                    <p>Enter a valid URL to preview the widget</p>
+                    <p>
+                      {previewMode === 'simple' 
+                        ? 'Enter a valid URL to preview the iframe' 
+                        : 'Enter a valid URL or parse HTML/JSX code to preview the component'
+                      }
+                    </p>
                   </div>
                 )}
               </div>
@@ -383,28 +619,90 @@ export default function IframeTester() {
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
-            <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">
-              Generated HTML Code
-            </h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold text-gray-800 dark:text-white">
+                Generated Code
+              </h2>
+              
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600 dark:text-gray-400">Output:</label>
+                <select
+                  value={previewMode === 'component' && parsedComponent ? 'component' : 'iframe'}
+                  onChange={(e) => {
+                    if (e.target.value === 'component' && parsedComponent) {
+                      setPreviewMode('component');
+                    } else {
+                      setPreviewMode('simple');
+                    }
+                  }}
+                  className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                >
+                  <option value="iframe">Iframe Only</option>
+                  <option value="component" disabled={!parsedComponent}>Complete Component</option>
+                </select>
+              </div>
+            </div>
             
             <div className="space-y-4">
               <div>
                 <textarea
-                  value={generateIframeCode()}
+                  value={
+                    previewMode === 'component' && parsedComponent
+                      ? substituteVariables(parsedComponent)
+                      : generateIframeCode()
+                  }
                   readOnly
-                  rows={6}
+                  rows={previewMode === 'component' && parsedComponent ? 12 : 6}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white font-mono text-sm"
                   placeholder="Enter a URL to generate iframe code..."
                 />
               </div>
               
               {url && isValidUrl(url) && (
-                <button
-                  onClick={copyIframeCode}
-                  className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-md transition-colors"
-                >
-                  Copy Code to Clipboard
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      const code = previewMode === 'component' && parsedComponent
+                        ? substituteVariables(parsedComponent)
+                        : generateIframeCode();
+                      navigator.clipboard.writeText(code);
+                      alert('Code copied to clipboard!');
+                    }}
+                    className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-md transition-colors"
+                  >
+                    Copy Code to Clipboard
+                  </button>
+                  
+                  {previewMode === 'component' && parsedComponent && (
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(generateIframeCode());
+                        alert('Iframe-only code copied to clipboard!');
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors"
+                    >
+                      Copy Iframe Only
+                    </button>
+                  )}
+                </div>
+              )}
+              
+              {Object.keys(variables).length > 0 && (
+                <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                  <h4 className="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-2">
+                    Variables in Code:
+                  </h4>
+                  <div className="text-sm text-yellow-700 dark:text-yellow-300">
+                    {Object.entries(variables).map(([key, value]) => (
+                      <div key={key} className="flex justify-between items-center">
+                        <span className="font-mono">${`{${key}}`}</span>
+                        <span className="font-mono text-xs bg-yellow-100 dark:bg-yellow-800 px-2 py-1 rounded">
+                          {value || 'empty'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           </div>
